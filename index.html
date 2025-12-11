@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Key Generator Panel — Firebase (Demo)</title>
+  <meta name="description" content="Admin + User Key Generator Panel using Firebase Auth + Firestore" />
+  <style>
+    :root{--bg:#0b1220;--card:#0f1724;--muted:#9aa4b2;--accent:#00d4ff}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(#041022,#061827);color:#e6eef6;margin:0;padding:20px}
+    .container{max-width:980px;margin:0 auto}
+    .card{background:rgba(255,255,255,0.03);padding:18px;border-radius:12px;margin-bottom:12px}
+    input,select,textarea,button{padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;width:100%}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    .muted{color:var(--muted)}
+    .btn{background:linear-gradient(90deg,var(--accent),#7b61ff);border:0;padding:10px 14px;color:#041019;font-weight:700;border-radius:8px}
+    pre{background:#051022;padding:12px;border-radius:8px;overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Key Generator Panel — Firebase (Demo)</h2>
+    <div class="card">
+      <h3>1) Quick setup (do this first)</h3>
+      <ol class="muted">
+        <li>Create a Firebase project at <code>console.firebase.google.com</code>.</li>
+        <li>Enable <strong>Authentication → Email/Password</strong>.</li>
+        <li>Enable <strong>Firestore</strong> in production mode.</li>
+        <li>In Project Settings add a Web App and copy the <code>firebaseConfig</code> object below.</li>
+        <li>Replace the <code>// TODO: REPLACE WITH YOUR CONFIG</code> in the JS section of this file.</li>
+        <li>Set Firestore rules (snippet is provided in the Admin panel section).</li>
+      </ol>
+    </div>
+
+    <div class="card" id="auth-area">
+      <h3>2) Admin — Signup / Login</h3>
+      <div id="auth-forms">
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label>Email</label>
+            <input id="admin-email" placeholder="admin@example.com">
+          </div>
+          <div style="width:180px">
+            <label>Password</label>
+            <input id="admin-pass" placeholder="password" type="password">
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn" id="signup">Sign up (admin)</button>
+          <button class="btn" id="login">Login</button>
+          <button id="logout" style="display:none">Logout</button>
+        </div>
+        <div class="muted" style="margin-top:8px">(Sign up creates an admin account. You should register only trusted admins.)</div>
+      </div>
+    </div>
+
+    <div class="card" id="admin-dashboard" style="display:none">
+      <h3>3) Admin Dashboard</h3>
+      <div style="display:flex;gap:12px;margin-bottom:12px">
+        <div style="flex:1">
+          <label>Key Prefix (optional)</label>
+          <input id="key-prefix" placeholder="PRO-">
+        </div>
+        <div style="width:160px">
+          <label>Expiry (days)</label>
+          <input id="key-expiry" type="number" value="30">
+        </div>
+        <div style="width:160px">
+          <label>Use limit</label>
+          <input id="key-limit" type="number" value="1">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="gen-key">Generate Key</button>
+        <button id="refresh-list">Refresh List</button>
+      </div>
+
+      <h4 style="margin-top:12px">Existing Keys</h4>
+      <div id="keys-table" style="max-height:300px;overflow:auto"></div>
+
+      <h4 style="margin-top:12px">Logs (recent 50)</h4>
+      <div id="logs" style="max-height:220px;overflow:auto"></div>
+
+      <h4 style="margin-top:8px">Firestore security rules (recommended)</h4>
+      <pre>// Firestore rules (example)
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /keys/{keyId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
+    }
+    match /logs/{logId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow create: if true; // server/client can write logs
+    }
+  }
+}
+</pre>
+    </div>
+
+    <div class="card">
+      <h3>4) Public: User → Enter key to authenticate</h3>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div style="flex:1">
+          <input id="user-key-input" placeholder="Enter your access key">
+        </div>
+        <div style="width:140px">
+          <button class="btn" id="verify-key">Verify Key</button>
+        </div>
+      </div>
+      <div id="verify-result" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h3>5) Notes / How it works (short)</h3>
+      <ul class="muted">
+        <li>Keys stored in Firestore: each doc contains token, createdAt, expiresAt, usesLeft, boundDeviceId (optional), createdBy</li>
+        <li>User submits key → Cloud function or client verifies key atomically (transaction) → decrement usesLeft, create log.</li>
+        <li>Device binding: when user first uses key, save device identifier (e.g., generated UUID) and compare on future uses.</li>
+        <li>For production, move verification endpoint to a secure Cloud Function to prevent client manipulation.</li>
+      </ul>
+    </div>
+
+    <div class="card muted">Made for demo — replace firebaseConfig, enable auth & firestore. Want me to deploy this to your GitHub Pages? Reply and I'll guide you step-by-step.</div>
+
+  </div>
+
+  <script type="module">
+    // Firebase v9 modular SDK (make sure to replace the config below)
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js'
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js'
+    import { getFirestore, collection, addDoc, doc, setDoc, getDocs, query, orderBy, limit, serverTimestamp, where, getDoc, updateDoc, deleteDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js'
+
+    // TODO: REPLACE WITH YOUR CONFIG
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "...",
+      appId: "..."
+    }
+
+    const app = initializeApp(firebaseConfig)
+    const auth = getAuth(app)
+    const db = getFirestore(app)
+
+    // UI refs
+    const signupBtn = document.getElementById('signup')
+    const loginBtn = document.getElementById('login')
+    const logoutBtn = document.getElementById('logout')
+    const adminEmail = document.getElementById('admin-email')
+    const adminPass = document.getElementById('admin-pass')
+    const adminDashboard = document.getElementById('admin-dashboard')
+    const genKeyBtn = document.getElementById('gen-key')
+    const keysTable = document.getElementById('keys-table')
+    const logsDiv = document.getElementById('logs')
+    const refreshBtn = document.getElementById('refresh-list')
+    const verifyBtn = document.getElementById('verify-key')
+    const verifyResult = document.getElementById('verify-result')
+
+    // simple helper to generate token
+    function randomToken(prefix=''){
+      const s = Math.random().toString(36).slice(2,10).toUpperCase()
+      return prefix + s + '-' + Date.now().toString(36)
+    }
+
+    signupBtn.onclick = async()=>{
+      try{
+        const email = adminEmail.value.trim(); const pass = adminPass.value.trim()
+        const userCred = await createUserWithEmailAndPassword(auth, email, pass)
+        alert('Admin account created. Add admin custom claim via Firebase Admin SDK in server console for real app.')
+      }catch(e){alert(e.message)}
+    }
+
+    loginBtn.onclick = async()=>{
+      try{const email = adminEmail.value.trim(); const pass = adminPass.value.trim(); await signInWithEmailAndPassword(auth,email,pass)}catch(e){alert(e.message)}
+    }
+
+    logoutBtn.onclick = async()=>{await signOut(auth)}
+
+    onAuthStateChanged(auth, async(user)=>{
+      if(user){
+        // show dashboard if user is signed in
+        document.getElementById('auth-forms').style.display='none'
+        logoutBtn.style.display='inline-block'
+        adminDashboard.style.display='block'
+        loadKeys(); loadLogs()
+      } else {
+        document.getElementById('auth-forms').style.display='block'
+        logoutBtn.style.display='none'
+        adminDashboard.style.display='none'
+      }
+    })
+
+    genKeyBtn.onclick = async()=>{
+      const prefix = document.getElementById('key-prefix').value || ''
+      const days = parseInt(document.getElementById('key-expiry').value || '30')
+      const limit = parseInt(document.getElementById('key-limit').value || '1')
+      const token = randomToken(prefix)
+      const now = new Date(); const expiresAt = new Date(now.getTime() + days*24*3600*1000)
+      try{
+        await addDoc(collection(db,'keys'),{token,createdAt:serverTimestamp(),expiresAt:expiresAt,usesLeft:limit,createdBy:auth.currentUser.uid,active:true})
+        alert('Key created: '+token)
+        loadKeys()
+      }catch(e){alert(e.message)}
+    }
+
+    refreshBtn.onclick = ()=>{loadKeys(); loadLogs()}
+
+    async function loadKeys(){
+      keysTable.innerHTML=''
+      const q = query(collection(db,'keys'), orderBy('createdAt','desc'))
+      const snap = await getDocs(q)
+      let html = '<table><thead><tr><th>Token</th><th>Expires</th><th>UsesLeft</th><th>Active</th><th>Actions</th></tr></thead><tbody>'
+      snap.forEach(docSnap=>{
+        const d = docSnap.data(); const id = docSnap.id
+        const exp = d.expiresAt && d.expiresAt.toDate ? d.expiresAt.toDate().toLocaleString() : d.expiresAt
+        html += `<tr><td>${d.token}</td><td>${exp||'—'}</td><td>${d.usesLeft||0}</td><td>${d.active? 'Yes':'No'}</td><td><button data-id='${id}' class='del'>Delete</button> <button data-id='${id}' class='toggle'>Toggle</button></td></tr>`
+      })
+      html += '</tbody></table>'
+      keysTable.innerHTML = html
+      // wire actions
+      keysTable.querySelectorAll('.del').forEach(btn=>btn.onclick=async(e)=>{const id=e.target.dataset.id; if(confirm('Delete?')){await deleteDoc(doc(db,'keys',id)); loadKeys()}})
+      keysTable.querySelectorAll('.toggle').forEach(btn=>btn.onclick=async(e)=>{const id=e.target.dataset.id; const ref=doc(db,'keys',id); const snap=await getDoc(ref); if(snap.exists()){await updateDoc(ref,{active:!snap.data().active}); loadKeys()}})
+    }
+
+    async function loadLogs(){ logsDiv.innerHTML=''; const q = query(collection(db,'logs'), orderBy('createdAt','desc'), limit(50)); const snap = await getDocs(q); let out=''; snap.forEach(s=>{const d=s.data(); const t = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : ''; out += `<div style="padding:6px;border-bottom:1px solid rgba(255,255,255,0.03)"><strong>${d.action}</strong> — ${d.token||''} <div class='muted' style='font-size:12px'>${t} — ${d.by||''} ${d.deviceId? ' — '+d.deviceId : ''}</div></div>` }) ; logsDiv.innerHTML = out }
+
+    // Verification (client-side demo). Important: For production, move to Cloud Function!
+    verifyBtn.onclick = async()=>{
+      const token = document.getElementById('user-key-input').value.trim()
+      if(!token){verifyResult.innerText='Enter a key'; return}
+      verifyResult.innerText='Checking...'
+      try{
+        // find key document
+        const q = query(collection(db,'keys'), where('token','==',token))
+        const snap = await getDocs(q)
+        if(snap.empty){verifyResult.innerText='Invalid key'; await addDoc(collection(db,'logs'),{action:'invalid',token,createdAt:serverTimestamp()}); return}
+        const keyDoc = snap.docs[0]
+        const keyRef = doc(db,'keys',keyDoc.id)
+
+        // transaction to check expiry and decrement usesLeft atomically
+        await runTransaction(db, async (tx)=>{
+          const s = await tx.get(keyRef)
+          if(!s.exists()) throw new Error('Key no longer exists')
+          const data = s.data()
+          if(!data.active) throw new Error('Key inactive')
+          // check expiry
+          if(data.expiresAt){
+            const exp = data.expiresAt.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt)
+            if(exp.getTime() < Date.now()) throw new Error('Key expired')
+          }
+          if(data.usesLeft && data.usesLeft <= 0) throw new Error('Key usage limit reached')
+          // optional: device binding (demo uses random id stored in localStorage)
+          const myDeviceId = localStorage.getItem('deviceId') || ('dev-'+Math.random().toString(36).slice(2,9))
+          localStorage.setItem('deviceId', myDeviceId)
+          if(data.boundDeviceId && data.boundDeviceId !== myDeviceId) throw new Error('Wrong device for this key')
+          const newUses = (data.usesLeft? data.usesLeft-1 : 0)
+          const updates = {usesLeft:newUses}
+          if(!data.boundDeviceId) updates.boundDeviceId = myDeviceId
+          tx.update(keyRef, updates)
+          // log
+          tx.set(doc(collection(db,'logs')),{action:'used',token,myDeviceId,createdAt:serverTimestamp(),by:'public'})
+        })
+        verifyResult.innerText = 'Key valid — access granted'
+      }catch(e){verifyResult.innerText = 'Error: '+e.message}
+      loadKeys(); loadLogs()
+    }
+
+  </script>
+</body>
+          </html>
+  
